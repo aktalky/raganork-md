@@ -1,0 +1,78 @@
+const { Module } = require('../main');         // Core module
+const { forwardOrBroadCast, parsedJid, getBuffer, genThumbnail } = require('../lib/');
+const config = require('../config');           // Access config if needed
+
+// Example static URL for link preview thumbnail
+const previewImageURL = 'https://i.imgur.com/8a3mxGM.jpeg';
+
+// Set private/public dynamically
+const isPrivateBot = config.MODE !== 'public';
+
+Module({
+    pattern: 'mforward ?(.*)',   // Command: .mforward jid1 jid2 ...
+    fromMe: isPrivateBot,        // Owner only or dynamic
+    desc: 'Forward a replied message to multiple JIDs with fake preview',
+    type: 'misc'
+}, async (message, match) => {
+    try {
+        // ✅ Validate: Must reply to a message
+        if (!message.reply_message) {
+            return await message.sendReply('*Reply to a message you want to forward!*');
+        }
+
+        // ✅ Validate: Must provide JIDs
+        if (!match) {
+            return await message.sendReply(
+                '*Give me at least one JID!*\nExample: `.mforward jid1 jid2 jid3`'
+            );
+        }
+
+        // ✅ Get thumbnail buffer (stream-friendly)
+        const previewBuffer = await getBuffer(previewImageURL);
+
+        // ✅ Build forwarding options
+        const options = {
+            contextInfo: {
+                forwardingScore: 999,  // Looks more "viral"
+                isForwarded: true
+            },
+            linkPreview: {
+                head: 'aaaddhiiyyy',
+                body: 'Leww youu.!!',
+                mediaType: 2, // 3 for video, 2 for image
+                thumbnail: previewBuffer.buffer,
+                sourceUrl: 'https://www.instagram.com/aaadhhiiiiyy?igsh=NjM3azcwdHp1M21q'
+            },
+            quoted: {
+                key: {
+                    fromMe: false,
+                    participant: '0@s.whatsapp.net',
+                    remoteJid: 'status@broadcast'
+                },
+                message: {
+                    imageMessage: {
+                        jpegThumbnail: await genThumbnail(previewBuffer.buffer),
+                        caption: 'You & me — a little chaos, a lot of love 🌸💫'
+                    }
+                }
+            }
+        };
+
+        // ✅ Special handling for audio replies
+        if (message.reply_message.audio) {
+            options.waveform = [90, 60, 88, 45, 0, 0, 0, 45, 88, 28, 9];
+            options.duration = 999; // Adjust duration if needed
+            options.ptt = true;     // Force as voice note
+        }
+
+        // ✅ Loop over parsed JIDs and forward
+        for (const jid of parsedJid(match)) {
+            await forwardOrBroadCast(jid, message, options);
+        }
+
+        await message.sendReply(`✅ Message forwarded to: ${match}`);
+    } catch (error) {
+        console.error(error);
+        await message.sendReply('*❌ Error occurred while forwarding!*');
+    }
+});
